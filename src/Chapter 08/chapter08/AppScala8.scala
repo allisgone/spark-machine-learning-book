@@ -1,19 +1,22 @@
-package chapter08
+package chapater08
 
 import org.apache.spark.SparkConf
 import org.apache.spark.SparkContext
 import breeze.linalg.csvwrite
 import java.awt.image.BufferedImage
+import java.io.{DataInputStream, File}
+
+import javax.imageio.ImageIO
 /**
- * 从数据中抽取合适的数据,降维模型
- */
+  * 从数据中抽取合适的数据,降维模型
+  */
 object AppScala8 {
   def main(args: Array[String]) {
     val conf = new SparkConf().setAppName("test").setMaster("local")
     val sc = new SparkContext(conf)
     //使用通配符的路径标识来告诉Spark在lfw文件夹中访问每个文件夹以获得文件
-    val path = "lfw/*"
-    //wholeTextFiles 读取一次整个文件,textFile在一个文件或多个文件逐行读取数据  
+    val path = "hdfs://bigdata251:9000/lfw/*"
+    //wholeTextFiles 读取一次整个文件,textFile在一个文件或多个文件逐行读取数据
     val rdd = sc.wholeTextFiles(path)
     val first = rdd.first
     println(first)
@@ -23,43 +26,42 @@ object AppScala8 {
     println(files.first)
     println(files.count)
     /**加载图片**/
-    import java.awt.image.BufferedImage
     //从文件中读取图片
     def loadImageFromFile(path: String): BufferedImage = {
-      import javax.imageio.ImageIO
-      import java.io.File
-      ImageIO.read(new File(path))
+      var file = new File(path);
+      println(file.getPath)
+      ImageIO.read(file)
     }
     //val aePath = "file:/D:/spark/spark-1.5.0-hadoop2.6/bin/lfw/Aaron_Eckhart/Aaron_Eckhart_0001.jpg"
-    val aePath1 = "lfw/Aaron_Eckhart/Aaron_Eckhart_0001.jpg"
- 
+    val aePath1 = "/usr/local/spark-2.4.7-bin-hadoop2.7/data/lfw/Aaron_Eckhart/Aaron_Eckhart_0001.jpg"
+
     val aeImage = loadImageFromFile(aePath1)
     /**
-     * aeImage: type = 5 ColorModel: #pixelBits = 24 numComponents = 3 
-     *  color space = java.awt.color.ICC_ColorSpace@4edeb425 transparency = 1 
-     *  has alpha = false isAlphaPre = false 
-     *  ByteInterleavedRaster: width = 250 height = 250 #numDataElements 3 dataOff[0] = 2
-     *  图片高度和宽度都250像素,颜色组件(RGB)数为3,
-     */
-    //转换灰度图片并改变图片大小 
+      * aeImage: type = 5 ColorModel: #pixelBits = 24 numComponents = 3
+      *  color space = java.awt.color.ICC_ColorSpace@4edeb425 transparency = 1
+      *  has alpha = false isAlphaPre = false
+      *  ByteInterleavedRaster: width = 250 height = 250 #numDataElements 3 dataOff[0] = 2
+      *  图片高度和宽度都250像素,颜色组件(RGB)数为3,
+      */
+    //转换灰度图片并改变图片大小
     def processImage(image: BufferedImage, width: Int, height: Int): BufferedImage = {
       //TYPE_BYTE_GRAY表示无符号byte灰度级图像（无索引）
       val bwImage = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY)
       val g = bwImage.getGraphics() //为组件创建一个图形上下文
       /**
-       * img - 要绘制的指定图像。如果 img 为 null，则此方法不执行任何动作。
-       * x - x 坐标。
-       * y - y 坐标。
-       * width - 矩形的宽度。
-       * height - 矩形的高度。
-       * observer - 当转换了更多图像时要通知的对象。
-       */
+        * img - 要绘制的指定图像。如果 img 为 null，则此方法不执行任何动作。
+        * x - x 坐标。
+        * y - y 坐标。
+        * width - 矩形的宽度。
+        * height - 矩形的高度。
+        * observer - 当转换了更多图像时要通知的对象。
+        */
       g.drawImage(image, 0, 0, width, height, null) //绘制指定图像中当前可用的图像
       //释放此图形的上下文以及它使用的所有系统资源。
       g.dispose()
       bwImage
     }
-     //转换灰度图片并改变图片大小 
+    //转换灰度图片并改变图片大小
     val grayImage = processImage(aeImage, 100, 100)
 
     // write the image out to the file system
@@ -74,38 +76,42 @@ object AppScala8 {
       val height = image.getHeight
       //用来声明多维数组
       val pixels = Array.ofDim[Double](width * height)
-      
+
       /**
-       * getPixels  读取像素的数值，存到pixels数组里面
-       *     参数1 从位图中读取的第一个像素的x坐标值
-       *     参数2 从位图中读取的第一个像素的y坐标值
-       *     参数3 从每一行中读取的像素宽度 
-       *     参数4 读取的行数 
-       *     参数5 接收位图颜色值的数组 
-       */
-       image.getData.getPixels(0, 0, width, height, pixels)
+        * getPixels  读取像素的数值，存到pixels数组里面
+        *     参数1 从位图中读取的第一个像素的x坐标值
+        *     参数2 从位图中读取的第一个像素的y坐标值
+        *     参数3 从每一行中读取的像素宽度
+        *     参数4 读取的行数
+        *     参数5 接收位图颜色值的数组
+        */
+      image.getData.getPixels(0, 0, width, height, pixels)
       // pixels.map(p => p / 255.0) 		// optionally scale to [0, 1] domain
     }
     // put all the functions together
     //接受一个图片文件位置和需要处理的宽和高,返回一个包含像素数据的Array[Double]值
-    def extractPixels(path: String, width: Int, height: Int): Array[Double] = {
-      val raw = loadImageFromFile(path)
+    def extractPixels(dataInputStream: DataInputStream, width: Int, height: Int): Array[Double] = {
+      //val raw = loadImageFromFile(path)
+      val raw = ImageIO.read(dataInputStream)
       val processed = processImage(raw, width, height)
       getPixelsFromImage(processed)
     }
+
     //把每个函数应用到包含图片路径的RDD的每个元素上将 产生一个新RDD,新的RDD包含第张图片的像素数据
-    val pixels = files.map(f => extractPixels(f, 50, 50))
-    println(pixels.take(10).map(_.take(10).mkString("", ",", ", ...")).mkString("\n"))
+    val binaryFiles = sc.binaryFiles(path)
+    val pixels = binaryFiles.map { case (k, v) => extractPixels(v.open(),50,50) }
+    //val pixels = files.map(f => extractPixels(f, 50, 50))
+    //println(pixels.take(10).map(_.take(10).mkString("", ",", ", ...")).mkString("\n"))
 
     // create vectors
-    //每个图片创建MLlib对象,将缓存RDD来加速后计算 
+    //每个图片创建MLlib对象,将缓存RDD来加速后计算
     import org.apache.spark.mllib.linalg.Vectors
     val vectors = pixels.map(p => Vectors.dense(p))
     // the setName method createa a human-readable name that is displayed in the Spark Web UI
     vectors.setName("image-vectors")
     // remember to cache the vectors to speed up computation
     vectors.cache
-    //正则化,提取列的平均值 
+    //正则化,提取列的平均值
     // normalize the vectors by subtracting the column means
     import org.apache.spark.mllib.feature.StandardScaler
     //fit函数会导致基于RDD计算
@@ -113,7 +119,7 @@ object AppScala8 {
     //将返回的scaler来转换原始的图片向量,让所有向量减去当前列的平均值
     val scaledVectors = vectors.map(v => scaler.transform(v))
     // create distributed RowMatrix from vectors, and train PCA on it
-   //PAC和SVD的计算是通过提供基于RowMatrix的方法实现
+    //PAC和SVD的计算是通过提供基于RowMatrix的方法实现
     import org.apache.spark.mllib.linalg.Matrix
     import org.apache.spark.mllib.linalg.distributed.RowMatrix
     //我们已经从图像数据中提取出了向量,
@@ -121,7 +127,7 @@ object AppScala8 {
     val K = 10
     //初始化一个新RowMatrix,并调用computePrincipalComponents来计算分布矩阵的前K个主成分
     val pc = matrix.computePrincipalComponents(K)
-    // you may see warnings, if the native BLAS libraries are not installed, don't worry about these 
+    // you may see warnings, if the native BLAS libraries are not installed, don't worry about these
     // 14/09/17 19:53:49 WARN LAPACK: Failed to load implementation from: com.github.fommil.netlib.NativeSystemLAPACK
     // 14/09/17 19:53:49 WARN LAPACK: Failed to load implementation from: com.github.fommil.netlib.NativeRefLAPACK
 
@@ -134,8 +140,6 @@ object AppScala8 {
     import breeze.linalg.DenseMatrix
     //
     val pcBreeze = new DenseMatrix(rows, cols, pc.toArray)
-    import breeze.linalg.csvwrite
-    import java.io.File
     //csvwrite 把矩阵写到CSV文件中
     csvwrite(new File("/tmp/pc.csv"), pcBreeze)
 
